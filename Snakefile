@@ -44,7 +44,7 @@ rule cactus:
         config["threads"]
     shell:
         """
-        mkdir {params.wkdir} {params.jobstore}
+        mkdir {params.wkdir}
         cactus --workDir {params.wkdir} {params.jobstore} {input.seqfile} {output} --defaultCores {threads}
         """
 
