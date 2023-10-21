@@ -40,10 +40,12 @@ rule cactus:
         jobstore = "jobStore"
     group:
         "cactus" + groupsuffix
+    threads:
+        config["threads"]
     shell:
         """
         mkdir {params.wkdir} {params.jobstore}
-        cactus --workDir {params.wkdir} {params.jobstore} {input.seqfile} {output}
+        cactus --workDir {params.wkdir} {params.jobstore} {input.seqfile} {output} --defaultCores {threads}
         """
 
 
