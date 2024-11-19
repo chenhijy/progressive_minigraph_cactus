@@ -1,0 +1,48 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "Progressive Cactus parameters",
+    "description": "Parameter specifications for generating a Progressive Cactus via the CPU docker on AWS EC2",
+    "required": [
+        "tree",
+        "genomes",
+        "outbase"
+    ],
+    "properties": {
+        "genomesDir": {
+            "type": "string",
+            "description": "AWS path to location of pre-uploaded input assemblies relative to default remote prefix (assumed to be salk-tm-dev/heidi/data1/hechen/MUsoyGenomes",
+            "default": "assemblies/"
+        },
+        "hubDir": {
+            "type": "string",
+            "description": "AWS path to location of output dir for assembly hub files relative to default remote prefix (assumed to be salk-tm-dev/heidi/data1/hechen/MUsoyGenomes",
+            "default": "cactus/pcAxts/"
+        },
+        "threads": {
+            "type": "integer",
+            "description": "how many threads to use",
+            "default": 16
+        },
+        "tree": {
+            "type": "string",
+            "description": "tree used to guide cactus construction"
+        },
+        "genomes": {
+            "type": "object",
+            "minProperties": 2,
+            "patternProperties": {
+                ".*": {"type": "string"}
+            },
+            "description": "dictionary/object mapping assembly abbreviations to assembly file names (basenames only, e.g. Gmax_MU-041.v1.softmasked.fa.gz)"
+        },
+        "outbase": {
+            "type": "string",
+            "description": "prefix for output files"
+        },
+        "docker": {
+            "type": "string",
+            "description": "URI to docker",
+            "default": "docker://quay.io/comparative-genomics-toolkit/cactus:v2.6.9"
+        }
+    }
+}
