@@ -1,0 +1,79 @@
+import json
+import os
+from snakemake.utils import validate
+# from Bio import SeqIO
+# import gzip
+
+validate(config, "schema/config.schema.json")
+
+ABS_PATH_GENOME_DICT = {k: config["genomesDir"]+v for k, v in config["genomes"].items()}
+PATH_TO_GENOME_DICT = {v: k for k, v in ABS_PATH_GENOME_DICT.items()}
+ACCESSIONS = list(ABS_PATH_GENOME_DICT.keys())
+FORMATS = ["_ins.bed", "_delDupInParentCoords.bed", "_snps.bed"]
+ASSMBLY_PATHS = list(ABS_PATH_GENOME_DICT.values())
+OUT_DIR = config["outdir"]
+OUT_BASE = config["outbase"]
+
+
+rule all:
+    input:
+        halFile = f'{OUT_DIR}/{OUT_BASE}.full.hal',
+        mgcTar = f'{OUT_DIR}/{OUT_BASE}.tar.gz',
+        hubTar = f'{OUT_DIR}/hubMGC_{OUT_BASE}.tar.gz'
+
+rule makeSeqFile:
+    output:
+        f'{OUT_DIR}/{OUT_BASE}.seqfile.txt'
+    params:
+        genomeInfo = ABS_PATH_GENOME_DICT,
+    group:
+        "minigraphCactus"
+    script:
+        "scripts/buildMGCseqFile.py"
+
+rule runMinigraphCactus:
+    input:
+        genomeFiles = ASSMBLY_PATHS,
+        seqfile = ancient(rules.makeSeqFile.output[0])
+    output:
+        halFile = f'{OUT_DIR}/{OUT_BASE}.full.hal',
+        mgcTar = f'{OUT_DIR}/{OUT_BASE}.tar.gz'
+    container:
+        config["docker"]
+    params:
+        refAssembly = config["referenceAssembly"]
+    group:
+        "minigraphCactus"
+    threads:
+        config["threads"]
+    shell:
+        """
+        cactus-pangenome {OUT_DIR}/js {input.seqfile} --outDir {OUT_DIR} \
+            --outName {OUT_BASE} --reference {params.refAssembly} --vcf \
+            --vcfReference {params.refAssembly} --chrom-og full clip filter \
+            --chrom-vg full clip filter --giraffe --gfa full clip filter \
+            --gbz full clip filter --viz full clip --draw full clip \
+            --odgi full clip filter --maxCores {threads} \
+            --workDir {OUT_DIR} --logFile {OUT_DIR}/logFile \
+            --latest
+        
+        tar -czvf {output.mgcTar} {OUT_DIR}/*
+        """
+
+rule generateAssemblyHub:
+    input:
+        halFile = f'{OUT_DIR}/{OUT_BASE}.full.hal'
+    output:
+        hubTar = f'{OUT_DIR}/hubMGC_{OUT_BASE}.tar.gz'
+    container:
+        config["docker"]
+    threads:
+        config["threads"]    
+    params:
+        hubName = f'hubMGC_{OUT_BASE}'
+    shell:
+        """
+        hal2assemblyHub.py --hub {params.hubName} --shortLabel {params.hubName} \
+            --longLabel {params.hubName}  {OUT_DIR}/hubJobStore {input.halFile} {OUT_DIR}
+        tar -czvf {output.hubTar} {OUT_DIR}/*
+        """

@@ -1,0 +1,135 @@
+import json
+import os
+from snakemake.utils import validate
+
+# import awscli
+# if os.environ.get('LC_CTYPE', '') == 'UTF-8':
+#     os.environ['LC_CTYPE'] = 'en_US.UTF-8'
+
+# from awscli.clidriver import create_clidriver
+# driver = create_clidriver()
+# driver.main('s3 mv s3://staging/AwsTesting/research/    s3://staging/AwsTesting/research_archive/ --recursive'.split())
+
+# def getAccession(outputFile):
+#    return outputFile.split("/")[-1].split("_")[0]
+
+groupsuffix = "_run"
+validate(config, "schema/config.schema.json")
+
+ABS_PATH_GENOME_DICT = {k: config["genomesDir"]+v for k, v in config["genomes"].items()}
+SWAP_ABS_PATH_GENOME_DICT = {v: k for k, v in ABS_PATH_GENOME_DICT.items()}
+ACCESSIONS = list(ABS_PATH_GENOME_DICT.keys())
+FORMATS = ["_ins.bed", "_delDupInParentCoords.bed", "_snps.bed"]
+ASSMBLY_PATHS = list(ABS_PATH_GENOME_DICT.values())
+OUT_PREFIX = config["hubDir"] + "hub_" + config["outbase"] + "_pcAxt/"
+#TWO_BIT_DIR =  config["hubDir"] + "2bits/"
+HUB_ASSMBLY_FILES = ["trackDb.txt", "description.html", "chrom.sizes"]
+HUB_GENERAL_FILES = ["hub.txt", "genomes.txt", "hubTreeModified.nw", "haltree.nw", "groups.txt", "documentation/hubCentral.html"]
+
+def getAncestorList(accessionsList):
+    numAncestors = int(len(accessionsList) - 1)
+    digitNum = len(str(numAncestors))
+    ancList = []
+    for i in range(0, numAncestors):
+        currAnc = "Anc" + "0"*(digitNum-len(str(i))) + str(i)
+        ancList.append(currAnc)
+    return ancList
+
+ANCESTOR_LIST = getAncestorList(ACCESSIONS)
+
+rule all:
+    input:
+        OUT_PREFIX + config["outbase"] + ".hal",
+        # expand("{prefix}branchMutations/{accession}{ext}", prefix=[OUT_PREFIX], accession=ACCESSIONS, ext=FORMATS),
+        expand("{prefix}{accession}/{accession}.2bit", prefix=[OUT_PREFIX], accession=ACCESSIONS+ANCESTOR_LIST),
+        expand("{prefix}{accession}/{file}", prefix=[OUT_PREFIX], accession=ACCESSIONS+ANCESTOR_LIST, file=HUB_ASSMBLY_FILES),
+        expand("{prefix}{file}", prefix=[OUT_PREFIX], file=HUB_GENERAL_FILES)
+
+for l, p in zip(ABS_PATH_GENOME_DICT.keys(), ABS_PATH_GENOME_DICT.values()):
+    print(f"{l}\t{p}\n")
+
+rule makeSeqFile:
+    output:
+        OUT_PREFIX + config["outbase"] + ".seqfile.txt"
+    params:
+        genomeInfo = ABS_PATH_GENOME_DICT,
+        tree = config["tree"]
+    group:
+        "cactus" + groupsuffix
+    script:
+        "scripts/buildSeqFile.py"
+
+#rule make2BitFiles:
+#    input:
+#        expand("{fastaFile}", fastaFile=ASSMBLY_PATHS)
+#    output:
+#        expand("{prefix}{accession}.2bit", prefix=[TWO_BIT_DIR], accession=ACCESSIONS)
+#    params:
+#        accession = lambda wc: wc.get("accession"),
+#        twoBitDir = TWO_BIT_DIR
+#    container:
+#        config["docker"]
+#    shell:
+#        """
+#        faToTwoBit {input} {twoBitDir}{accession}.2bit
+#        """
+
+rule runProgressiveCactus:
+    input:
+        genomeFiles = ASSMBLY_PATHS,
+        seqfile = rules.makeSeqFile.output[0]
+    output:
+        OUT_PREFIX + config["outbase"] + ".hal"
+    container:
+        config["docker"]
+    params:
+        wkdir = OUT_PREFIX + "workdir",
+        jobstore = OUT_PREFIX + "jobstore"
+    group:
+        "cactus" + groupsuffix
+    threads:
+        config["threads"]
+    shell:
+        """
+        mkdir {params.wkdir}
+        cactus --workDir {params.wkdir} {params.jobstore} {input.seqfile} {output} --defaultCores {threads}
+        """
+
+#rule callMutations:
+#    input:
+#        halFile = rules.runProgressiveCactus.output[0]
+#    output:
+#        expand("{prefix}branchMutations/{accession}{ext}", prefix=[OUT_PREFIX], accession=ACCESSIONS, ext=FORMATS)
+#    container:
+#        config["docker"]
+#    params:
+#        accession = lambda wildcards, output: output[0].split("/")[-1].split("_")[0],
+        #accession = lambda wildcards, output: output[0].split("/")[-1].split("_")[0],
+#        outPrefix = OUT_PREFIX + "branchMutations/"
+#    shell:
+#        """
+#        halBranchMutations {input.halFile} {params.accession} \
+#            --refFile {params.outPrefix}{params.accession}_ins.bed  \
+#            --parentFile {params.outPrefix}{params.accession}_delDupInParentCoords.bed \
+#            --snpFile {params.outPrefix}{params.accession}_snps.bed --maxNFraction 0.1
+#        """
+
+rule generateAssemblyHub:
+    input:
+        halFile = rules.runProgressiveCactus.output[0]
+    output:
+        expand("{prefix}{accession}/{accession}.2bit", prefix=[OUT_PREFIX], accession=ACCESSIONS+ANCESTOR_LIST),
+        expand("{prefix}{accession}/{file}", prefix=[OUT_PREFIX], accession=ACCESSIONS+ANCESTOR_LIST, file=HUB_ASSMBLY_FILES),
+        expand("{prefix}{file}", prefix=[OUT_PREFIX], file=HUB_GENERAL_FILES)
+    container:
+        config["docker"]
+    threads:
+        config["threads"]    
+    params:
+        outPrefix = OUT_PREFIX,
+        hubName = config["outbase"] + "_hub"
+    shell:
+        """
+        #hal2assemblyHub.py --provisioner aws --hub {params.hubName} --shortLabel {params.hubName} --longLabel {params.hubName} --defaultCores {threads} --writeLogsGzip {params.outPrefix}logs {params.outPrefix}hubJobStore {input.halFile} {params.outPrefix}
+        hal2assemblyHub.py --hub {params.hubName} --shortLabel {params.hubName} --longLabel {params.hubName} --defaultCores {threads} --writeLogsGzip {params.outPrefix}logs {params.outPrefix}hubJobStore {input.halFile} {params.outPrefix}
+        """
