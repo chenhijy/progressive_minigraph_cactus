@@ -1,9 +1,0 @@
-{
-    "genomes": {
-        "gMaxMU041": "genomes/Gmax_MU-041_ptg000055l.fa.gz",
-        "gMaxMU049": "genomes/GMax_MU-049_ptg000221l.fa.gz",
-        "gMaxMU080": "genomes/Gmax_MU-080_ptg000078l.fa.gz"
-    },
-    "tree": "((gMaxMU049:0.0895059,gMaxMU041:0.0895059):0.0381331,gMaxMU080:0.127639);",
-    "outbase": "cactus_test"
-}
